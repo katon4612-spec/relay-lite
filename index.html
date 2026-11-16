@@ -25,7 +25,6 @@ header nav button{background:transparent;color:#4A4135;border:0;border-radius:7p
 header nav button:hover{background:transparent;color:var(--ink)}
 header nav button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(43,38,32,.14),0 0 0 1px var(--line)}
 header #logout{color:var(--muted);border-left:1px solid var(--line);border-radius:0 7px 7px 0}
-button.danger{color:var(--bad);border-color:#E3C2BE}button.danger:hover{background:#F8ECEA;border-color:#D9A7A1}
 .tag.warn{--c:var(--warn)}.tag.gray{--c:#8A8073}
 .lt td{white-space:nowrap}.lt td.nm{font-weight:600;white-space:normal;word-break:break-all}
 .lt .acts{justify-content:flex-start}
@@ -220,12 +219,12 @@ function drawLines(){
   const all=state.lines||[],rs=shownLines(),n=state.sel.size;
   H("#main",`<div class="card"><h2>线路管理（${all.length} 条）</h2>
   <div class="toolbar"><input id="q" placeholder="搜索节点名 / 客户 / 落地 / 端口" value="${esc(state.q)}" style="flex:1;min-width:200px">
-   <button id="rf">刷新</button><button id="cpsel" ${n?"":"disabled"}>复制选中链接</button><button class="danger" id="delsel" ${n?"":"disabled"}>删除选中${n?`（${n}）`:""}</button></div>
+   <button id="rf">刷新</button><button id="cpsel" ${n?"":"disabled"}>复制选中链接${n?`（${n}）`:""}</button></div>
   ${all.length?`<div style="overflow:auto"><table class="lt"><tr><th><input type="checkbox" id="ckall" ${rs.length&&rs.every(r=>state.sel.has(r.tag))?"checked":""}></th><th>节点名</th><th>客户</th><th>落地</th><th>端口</th><th>操作</th></tr>
   ${rs.map((r,i)=>`<tr><td><input type="checkbox" data-ck="${esc(r.tag)}" ${state.sel.has(r.tag)?"checked":""}></td>
    <td class="nm">${esc(r.tag)}</td><td data-l="客户">${esc(r.customer||"-")}</td>
    <td class="mono" data-l="落地">${esc(r.landing||"-")}</td><td class="mono" data-l="端口">${esc(r.port)}</td>
-   <td><div class="acts"><button class="sm" data-cp="${i}">复制链接</button><button class="sm" data-qr="${i}">二维码</button><button class="sm danger" data-del="${i}">删除</button></div></td></tr>`).join("")}
+   <td><div class="acts"><button class="sm" data-cp="${i}">复制链接</button><button class="sm" data-qr="${i}">二维码</button></div></td></tr>`).join("")}
   </table></div>${rs.length?"":'<p class="empty">没有匹配的线路</p>'}`:'<p class="empty">还没有建过线路，去「一键中转」建一条吧</p>'}</div>`);
   const q=$("#q");q.oninput=()=>{state.q=q.value;const pos=q.selectionStart;drawLines();const nq=$("#q");nq.focus();nq.setSelectionRange(pos,pos)};
   $("#rf").onclick=async()=>{state.lines=null;await renderLines();toast("已刷新")};
@@ -233,9 +232,7 @@ function drawLines(){
   document.querySelectorAll("[data-ck]").forEach(c=>c.onchange=()=>{c.checked?state.sel.add(c.dataset.ck):state.sel.delete(c.dataset.ck);drawLines()});
   document.querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>copyLinks([rs[b.dataset.cp]]));
   document.querySelectorAll("[data-qr]").forEach(b=>b.onclick=()=>showQR(rs[b.dataset.qr]));
-  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>delLines([rs[b.dataset.del].tag]));
   $("#cpsel").onclick=()=>copyLinks(all.filter(r=>state.sel.has(r.tag)));
-  $("#delsel").onclick=()=>delLines([...state.sel]);
 }
 async function fetchLinks(rows){const ids=rows.map(r=>r.client_id).filter(Boolean);if(!ids.length)return [];return (await api("links",{client_ids:ids})).links}
 async function copyLinks(rows){try{const l=await fetchLinks(rows);if(!l.length)return toast("没有链接");copy(l.map(x=>x.uri).join("\n"))}catch(e){toast(e.message)}}
@@ -248,16 +245,6 @@ async function showQR(r){
     $("#mcp").onclick=()=>copy(l.uri);$("#mdl").onclick=()=>downloadQR(r.tag,l.svg,r.port);$("#mcl").onclick=closeModal}
   catch(e){closeModal();toast(e.message)}
 }
-async function delLines(tags){
-  if(!tags.length)return;
-  if(!confirm(`删除 ${tags.length} 条线路：\n${tags.slice(0,10).join("\n")}${tags.length>10?`\n…等 ${tags.length} 条`:""}\n\n入站、用户和落地出站会一起删掉，客户马上用不了，不能恢复。\n完成后会重启 s-ui，所有线路约断 3 秒。确定？`))return;
-  toast("正在删除…",60000);
-  try{const r=await api("delete",{tags});const ok=r.results.filter(x=>x.ok).length,bad=r.results.filter(x=>!x.ok);
-    tags.forEach(t=>state.sel.delete(t));state.lines=null;await renderLines();
-    toast(`已删除 ${ok} 条${bad.length?`，${bad.length} 条失败：${bad[0].error}`:""}${coreMsg(r.core)}`,6000)}
-  catch(e){toast(e.message,5000)}
-}
-
 /* 二维码图片：二维码 + 节点名 + 地址 */
 const safeName=n=>String(n||"qr").replace(/[\\/:*?"<>|\r\n]/g,"_").trim()||"qr";
 function qrPng(name,svg,port){

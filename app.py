@@ -42,7 +42,7 @@ sys.path.insert(0, HERE)
 import qrencoder  # noqa: E402  (vendored, MIT)
 
 CONFIG_PATH = os.environ.get("RELAY_LITE_CONFIG", os.path.join(HERE, "config.json"))
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 DEFAULTS = {
     "listen": "0.0.0.0",
@@ -796,70 +796,6 @@ def op_links(body):
     return {"links": out}
 
 
-def op_delete(body):
-    """
-    顺序：用户 → 入站 → 路由规则（只移除真正删掉的入站）→ 重启 s-ui → 落地出站。
-    不会留下「入站还在但路由规则没了」的情况（那会让流量从中转机直接出网）。
-    """
-    tags = list(dict.fromkeys(body.get("tags") or []))
-    if not tags:
-        raise SuiError("请选择要删除的线路")
-    out = []
-    with LOCK:
-        data = SUI.load_all()
-        rows = {r["tag"]: r for r in _rows(data)}
-        deleted = set()
-        for t in tags:
-            row = rows.get(t)
-            if not row:
-                out.append({"tag": t, "ok": False, "error": "不存在或不是这里建的线路"})
-                continue
-            try:
-                if row.get("client_id"):
-                    SUI.save("clients", "del", row["client_id"])
-                SUI.save("inbounds", "del", t)
-                deleted.add(t)
-                out.append({"tag": t, "ok": True})
-            except Exception as e:
-                out.append({"tag": t, "ok": False, "error": str(e)})
-        core = "ok"
-        if deleted:
-            cfg = SUI.get("config")
-            cfg = cfg.get("config", cfg) if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict) else cfg
-            rules = (cfg.get("route") or {}).get("rules") or []
-            newrules = []
-            for r in rules:
-                inb = r.get("inbound")
-                if inb and any(x in deleted for x in inb):
-                    keep = [x for x in inb if x not in deleted]
-                    if not keep:
-                        continue
-                    r = dict(r)
-                    r["inbound"] = keep
-                    if r.get("auth_user"):
-                        r["auth_user"] = [u for u in r["auth_user"] if u not in deleted]
-                        if not r["auth_user"]:
-                            r.pop("auth_user")
-                newrules.append(r)
-            if newrules != rules:
-                cfg["route"]["rules"] = newrules
-                SUI.save("config", "edit", cfg)
-                core = ensure_core()
-            still_used = {r.get("outbound") for r in newrules}
-            for t in deleted:
-                ot = rows[t].get("outbound_tag")
-                if ot and ot not in still_used and ot != "direct":
-                    try:
-                        SUI.save("outbounds", "del", ot)
-                    except Exception:
-                        pass
-            with LINES_LOCK:
-                for t in deleted:
-                    LINES.pop(t, None)
-            save_lines()
-    return {"results": out, "core": core}
-
-
 def op_qr(body):
     return {"svg": qr_svg(body.get("text") or "")}
 
@@ -871,7 +807,7 @@ def op_status(body):
 
 
 OPS = {"status": op_status, "preview": op_preview, "check_raw": op_check_raw, "create": op_create, "qr": op_qr,
-       "list": op_list, "links": op_links, "delete": op_delete}
+       "list": op_list, "links": op_links}
 
 
 # ------------------------------------------------------------- 登录 --
