@@ -1,4 +1,5 @@
 config.json
+lines.json
 sessions.json
 cert/
 __pycache__/

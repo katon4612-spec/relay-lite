@@ -42,7 +42,7 @@ sys.path.insert(0, HERE)
 import qrencoder  # noqa: E402  (vendored, MIT)
 
 CONFIG_PATH = os.environ.get("RELAY_LITE_CONFIG", os.path.join(HERE, "config.json"))
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 DEFAULTS = {
     "listen": "0.0.0.0",
@@ -510,6 +510,31 @@ def reserve_ports():
 
 
 # ----------------------------------------------------------- 一键中转 --
+LINES_PATH = os.path.join(os.path.dirname(CONFIG_PATH), "lines.json")
+LINES = {}   # 本工具建过的线路：节点名 -> 创建时间（线路管理只列这些）
+LINES_LOCK = threading.Lock()
+MARK = "简易版中转助手创建"
+
+
+def load_lines():
+    try:
+        with open(LINES_PATH) as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            LINES.update(d)
+    except Exception:
+        pass
+
+
+def save_lines():
+    with LINES_LOCK:
+        tmp = LINES_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(LINES, f, ensure_ascii=False)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, LINES_PATH)
+
+
 def op_preview(body):
     """解析粘贴的落地，生成节点名（落地国家 + 客户名 + 落地 IP）。"""
     lines = [l for l in (body.get("text") or "").splitlines() if l.strip()]
@@ -609,7 +634,7 @@ def _make_inbound(name, tls_id, expiry, group, taken_ports, outbound_tag):
         created["inbound"] = name
         client = {"enable": True, "name": name, "config": client_config(name), "inbounds": [inb_id],
                   "links": [], "volume": 0, "expiry": int(expiry or 0), "up": 0, "down": 0,
-                  "desc": "简易版中转助手创建", "group": group or ""}
+                  "desc": MARK, "group": group or ""}
         res = SUI.save("clients", "new", client)
         cid = next((c["id"] for c in (res or {}).get("clients") or [] if c.get("name") == name), None)
         created["client"] = cid
@@ -702,6 +727,12 @@ def op_create(body):
             r["item"] = idx
             results.append(r)
         core = _apply_rules(results, new_outbounds)
+        now = int(time.time())
+        made = [r["name"] for r in results if r.get("ok")]
+        if made:
+            with LINES_LOCK:
+                LINES.update({n: now for n in made})
+            save_lines()
     for r in results:
         if r.get("ok") and r.get("client_id"):
             try:
@@ -710,6 +741,124 @@ def op_create(body):
                 r["links"] = []
                 sys.stderr.write("links: %s\n" % e)
     return {"results": results, "core": core}
+
+
+def _rows(data):
+    """本工具建过的线路：入站 + 用户 + 路由到的落地出站。"""
+    outbounds = {o.get("tag"): o for o in data.get("outbounds") or []}
+    rules = (((data.get("config") or {}).get("route") or {}).get("rules")) or []
+    route_of = {}
+    for r in rules:
+        if r.get("action", "route") == "route" and r.get("outbound"):
+            for t in r.get("inbound") or []:
+                route_of.setdefault(t, r["outbound"])
+    clients_by_inb = {}
+    for c in data.get("clients") or []:
+        ids = c.get("inbounds") or []
+        if isinstance(ids, str):
+            try:
+                ids = json.loads(ids)
+            except ValueError:
+                ids = []
+        for i in ids:
+            clients_by_inb.setdefault(i, []).append(c)
+    with LINES_LOCK:
+        mine = dict(LINES)
+    rows = []
+    for inb in data.get("inbounds") or []:
+        tag = inb.get("tag")
+        cl = clients_by_inb.get(inb.get("id"), [])
+        c = next((x for x in cl if x.get("name") == tag), cl[0] if cl else None)
+        if tag not in mine and not (c and c.get("desc") == MARK):
+            continue
+        ot = route_of.get(tag)
+        ob = outbounds.get(ot) or {}
+        rows.append({
+            "tag": tag, "port": inb.get("listen_port"), "inbound_id": inb.get("id"),
+            "outbound_tag": ot, "landing": "%s:%s" % (ob.get("server"), ob.get("server_port")) if ob.get("server") else (ot or ""),
+            "landing_type": ob.get("type") or "",
+            "client_id": c.get("id") if c else None, "customer": (c or {}).get("group") or "",
+            "enable": bool(c.get("enable")) if c else None, "expiry": (c or {}).get("expiry") or 0,
+            "created": mine.get(tag, 0),
+        })
+    rows.sort(key=lambda r: (r["created"], r.get("inbound_id") or 0), reverse=True)
+    return rows
+
+
+def op_list(body):
+    return {"lines": _rows(SUI.load_all()), "now": int(time.time())}
+
+
+def op_links(body):
+    out = []
+    for cid in body.get("client_ids") or []:
+        for u in client_links(cid):
+            out.append({"client_id": cid, "uri": u, "svg": qr_svg(u)})
+    return {"links": out}
+
+
+def op_delete(body):
+    """
+    顺序：用户 → 入站 → 路由规则（只移除真正删掉的入站）→ 重启 s-ui → 落地出站。
+    不会留下「入站还在但路由规则没了」的情况（那会让流量从中转机直接出网）。
+    """
+    tags = list(dict.fromkeys(body.get("tags") or []))
+    if not tags:
+        raise SuiError("请选择要删除的线路")
+    out = []
+    with LOCK:
+        data = SUI.load_all()
+        rows = {r["tag"]: r for r in _rows(data)}
+        deleted = set()
+        for t in tags:
+            row = rows.get(t)
+            if not row:
+                out.append({"tag": t, "ok": False, "error": "不存在或不是这里建的线路"})
+                continue
+            try:
+                if row.get("client_id"):
+                    SUI.save("clients", "del", row["client_id"])
+                SUI.save("inbounds", "del", t)
+                deleted.add(t)
+                out.append({"tag": t, "ok": True})
+            except Exception as e:
+                out.append({"tag": t, "ok": False, "error": str(e)})
+        core = "ok"
+        if deleted:
+            cfg = SUI.get("config")
+            cfg = cfg.get("config", cfg) if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict) else cfg
+            rules = (cfg.get("route") or {}).get("rules") or []
+            newrules = []
+            for r in rules:
+                inb = r.get("inbound")
+                if inb and any(x in deleted for x in inb):
+                    keep = [x for x in inb if x not in deleted]
+                    if not keep:
+                        continue
+                    r = dict(r)
+                    r["inbound"] = keep
+                    if r.get("auth_user"):
+                        r["auth_user"] = [u for u in r["auth_user"] if u not in deleted]
+                        if not r["auth_user"]:
+                            r.pop("auth_user")
+                newrules.append(r)
+            if newrules != rules:
+                cfg["route"]["rules"] = newrules
+                SUI.save("config", "edit", cfg)
+                core = ensure_core()
+            still_used = {r.get("outbound") for r in newrules}
+            for t in deleted:
+                ot = rows[t].get("outbound_tag")
+                if ot and ot not in still_used and ot != "direct":
+                    try:
+                        SUI.save("outbounds", "del", ot)
+                    except Exception:
+                        pass
+            with LINES_LOCK:
+                for t in deleted:
+                    LINES.pop(t, None)
+            save_lines()
+    return {"results": out, "core": core}
 
 
 def op_qr(body):
@@ -722,7 +871,8 @@ def op_status(body):
             "reality_tls": find_tls(data, "reality")}
 
 
-OPS = {"status": op_status, "preview": op_preview, "check_raw": op_check_raw, "create": op_create, "qr": op_qr}
+OPS = {"status": op_status, "preview": op_preview, "check_raw": op_check_raw, "create": op_create, "qr": op_qr,
+       "list": op_list, "links": op_links, "delete": op_delete}
 
 
 # ------------------------------------------------------------- 登录 --
@@ -918,6 +1068,7 @@ def main():
     except Exception as e:
         print("警告：暂时无法登录 s-ui：", e)
     load_sessions()
+    load_lines()
     srv = ThreadingHTTPServer((CFG["listen"], int(CFG["port"])), Handler)
     scheme = "http"
     if CFG.get("cert_file") and CFG.get("key_file"):
