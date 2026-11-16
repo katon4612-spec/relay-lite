@@ -42,7 +42,7 @@ sys.path.insert(0, HERE)
 import qrencoder  # noqa: E402  (vendored, MIT)
 
 CONFIG_PATH = os.environ.get("RELAY_LITE_CONFIG", os.path.join(HERE, "config.json"))
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 DEFAULTS = {
     "listen": "0.0.0.0",
@@ -408,6 +408,59 @@ def find_tls(data, kind):
         if kind == "cert" and not is_reality and has_cert:
             return t["id"]
     return 0
+
+
+def x25519_pub(priv):
+    """Reality 私钥算公钥（纯 Python，不依赖额外的库）。"""
+    k = bytearray(base64.urlsafe_b64decode(priv + "=" * (-len(priv) % 4)))
+    k[0] &= 248
+    k[31] &= 127
+    k[31] |= 64
+    n = int.from_bytes(k, "little")
+    p, a24 = 2 ** 255 - 19, 121665
+    x1, x2, z2, x3, z3, swap = 9, 1, 0, 9, 1, 0
+    for t in reversed(range(255)):
+        kt = (n >> t) & 1
+        swap ^= kt
+        if swap:
+            x2, x3, z2, z3 = x3, x2, z3, z2
+        swap = kt
+        A = (x2 + z2) % p
+        AA = A * A % p
+        B = (x2 - z2) % p
+        BB = B * B % p
+        E = (AA - BB) % p
+        C = (x3 + z3) % p
+        D = (x3 - z3) % p
+        DA = D * A % p
+        CB = C * B % p
+        x3 = (DA + CB) ** 2 % p
+        z3 = x1 * (DA - CB) ** 2 % p
+        x2 = AA * BB % p
+        z2 = E * (AA + a24 * E) % p
+    if swap:
+        x2, x3, z2, z3 = x3, x2, z3, z2
+    return base64.urlsafe_b64encode((x2 * pow(z2, p - 2, p) % p).to_bytes(32, "little")).rstrip(b"=").decode()
+
+
+def ensure_reality(sni="www.apple.com"):
+    """s-ui 里还没有 Reality 配置就自动建一个（新装的服务器用），返回 (tls_id, 是否新建)。"""
+    data = SUI.load_all()
+    tid = find_tls(data, "reality")
+    if tid:
+        return tid, False
+    priv = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+    name = "reality-auto"
+    tls = {"name": name,
+           "server": {"enabled": True, "server_name": sni,
+                      "reality": {"enabled": True, "handshake": {"server": sni, "server_port": 443},
+                                  "private_key": priv, "short_id": [secrets.token_hex(4)]}},
+           "client": {"reality": {"public_key": x25519_pub(priv)}, "utls": {"enabled": True, "fingerprint": "chrome"}}}
+    SUI.save("tls", "new", tls)
+    tid = find_tls(SUI.load_all(), "reality")
+    if not tid:
+        raise SuiError("自动创建 Reality 配置失败，请在 s-ui「TLS 设置」里手动添加")
+    return tid, True
 
 
 def unique_name(name, taken):

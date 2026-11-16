@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# 简易版中转助手（只有一键中转）一键安装 / 升级脚本（在装有 s-ui 的中转服务器上用 root 运行）
-#   bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh)   在线安装/升级
-#   bash install.sh            安装或升级（升级会保留原配置）
-#   bash install.sh uninstall  卸载（s-ui 里已建的节点不受影响）
+# 简易版中转助手 一行安装（在中转服务器上用 root 运行）
+#   bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh) 你的域名
+# 没装 s-ui 的会自动装 s-ui 1.3.10（随机管理员密码）并建好 Reality 配置；已装的直接用。
+# 再执行一次 = 升级（配置和线路都保留）；最后加 uninstall = 卸载（s-ui 里的节点不受影响）。
 set -e
 DIR=/opt/relay-lite
 SRC="$(cd "$(dirname "$0")" && pwd)"
 SVC=/etc/systemd/system/relay-lite.service
 REPO="katon4612-spec/relay-lite"
+SUI_VERSION="v1.3.10"
 
 [ "$(id -u)" = "0" ] || { echo "请用 root 运行"; exit 1; }
 
@@ -19,24 +20,68 @@ if [ "$1" = "uninstall" ]; then
   exit 0
 fi
 
-# 用一行命令在线安装时（bash <(curl ...)），脚本旁边没有程序文件：从 GitHub 下载最新版
-if [ ! -f "$SRC/app.py" ]; then
+# 命令后面带的域名：不再问
+if [ -n "$1" ]; then
+  export RL_PUBLIC_HOST="$1"
+  export RL_HTTPS_YES=1
+fi
+
+need() { command -v "$1" >/dev/null 2>&1; }
+pkg_install() {
+  (apt-get update -y >/dev/null 2>&1 && apt-get install -y "$@") || yum install -y "$@" || dnf install -y "$@"
+}
+need curl || pkg_install curl
+need tar || pkg_install tar
+need python3 || { echo "安装 python3 ..."; pkg_install python3; }
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' || { echo "需要 Python 3.7 以上"; exit 1; }
+python3 -c 'import sqlite3' || { echo "python3 缺少 sqlite3 模块"; exit 1; }
+
+# ---------- 没装 s-ui：自动安装 s-ui 1.3.10 ----------
+SUI_NEW_PASS=""
+if [ ! -x /usr/local/s-ui/sui ]; then
+  case "$(uname -m)" in
+    x86_64|x64|amd64) ARCH=amd64 ;;
+    i*86|x86) ARCH=386 ;;
+    armv8*|armv8|arm64|aarch64) ARCH=arm64 ;;
+    armv7*|armv7) ARCH=armv7 ;;
+    armv6*|armv6) ARCH=armv6 ;;
+    armv5*|armv5) ARCH=armv5 ;;
+    s390x) ARCH=s390x ;;
+    *) echo "不支持的 CPU 架构：$(uname -m)"; exit 1 ;;
+  esac
+  echo "没有找到 s-ui，自动安装 s-ui $SUI_VERSION（$ARCH）..."
+  T="$(mktemp -d)"
+  curl -fL --retry 3 -o "$T/s-ui.tar.gz" "https://github.com/alireza0/s-ui/releases/download/$SUI_VERSION/s-ui-linux-$ARCH.tar.gz" \
+    || { echo "下载 s-ui 失败，确认服务器能访问 GitHub"; exit 1; }
+  tar xzf "$T/s-ui.tar.gz" -C "$T"
+  chmod +x "$T/s-ui/sui" "$T/s-ui/s-ui.sh"
+  cp "$T/s-ui/s-ui.sh" /usr/bin/s-ui
+  cp -rf "$T/s-ui" /usr/local/
+  cp -f "$T/s-ui/"*.service /etc/systemd/system/
+  rm -rf "$T"
+  /usr/local/s-ui/sui migrate >/dev/null
+  SUI_NEW_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+  /usr/local/s-ui/sui admin -username admin -password "$SUI_NEW_PASS" >/dev/null
+  systemctl daemon-reload
+  systemctl enable s-ui --now >/dev/null 2>&1
+  echo -n "等待 s-ui 启动"
+  for i in $(seq 1 30); do
+    curl -s -o /dev/null "http://127.0.0.1:2095/app/" && break
+    echo -n "."; sleep 1
+  done
+  echo ""
+  echo "✓ s-ui $SUI_VERSION 已安装"
+fi
+
+# ---------- 安装 / 升级 简易版中转助手 ----------
+if [ ! -f "$SRC/app.py" ]; then   # 用一行命令在线安装时，从 GitHub 下载最新版
   TMP="$(mktemp -d)"
   URL="https://github.com/$REPO/archive/refs/heads/main.tar.gz"
-  echo "下载最新版 $URL"
-  if command -v curl >/dev/null 2>&1; then curl -fsSL "$URL" | tar xz -C "$TMP"
-  else wget -qO- "$URL" | tar xz -C "$TMP"; fi
+  echo "下载简易版中转助手 $URL"
+  curl -fsSL "$URL" | tar xz -C "$TMP"
   SRC="$TMP/relay-lite-main"
   [ -f "$SRC/app.py" ] || { echo "下载失败"; exit 1; }
 fi
-
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "安装 python3 ..."
-  (apt-get update -y && apt-get install -y python3) || yum install -y python3 || dnf install -y python3
-fi
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' || { echo "需要 Python 3.7 以上"; exit 1; }
-python3 -c 'import sqlite3' || { echo "python3 缺少 sqlite3 模块"; exit 1; }
-systemctl list-unit-files 2>/dev/null | grep -q '^s-ui\.service' || echo "⚠ 没找到 s-ui 服务，确认这台机器装了 s-ui"
 
 mkdir -p "$DIR"
 if [ "$SRC" != "$DIR" ]; then
@@ -72,22 +117,28 @@ PORT=$(cfg "c['port']")
 WPATH=$(cfg "c['path']")
 PASS=$(cfg "c['password']")
 HOST=$(cfg "c['public_host']")
+SUSER=$(cfg "c.get('sui_user','')")
 SCHEME=$(cfg "'https' if c.get('cert_file') else 'http'")
 
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then ufw allow "$PORT/tcp" >/dev/null; fi
-if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -q running; then
-  firewall-cmd --permanent --add-port="$PORT/tcp" >/dev/null && firewall-cmd --reload >/dev/null; fi
+if need ufw && ufw status | grep -q "Status: active"; then ufw allow "$PORT/tcp" >/dev/null; ufw allow 10000:60000/tcp >/dev/null; fi
+if need firewall-cmd && firewall-cmd --state 2>/dev/null | grep -q running; then
+  firewall-cmd --permanent --add-port="$PORT/tcp" --add-port=10000-60000/tcp >/dev/null && firewall-cmd --reload >/dev/null; fi
 
 if systemctl is-active --quiet relay-lite; then
   echo ""
   echo "=============================================="
   echo " 简易版中转助手已运行"
   echo " 地址： $SCHEME://$HOST:$PORT$WPATH"
-  echo " 登录： 用 s-ui 面板的账号密码"
+  echo " 账号： $SUSER"
+  if [ -n "$SUI_NEW_PASS" ]; then
+    echo " 密码： $SUI_NEW_PASS"
+    echo "       （也是 s-ui 面板 http://$HOST:2095/app/ 的密码，请记好）"
+  else
+    echo " 密码： 和 s-ui 面板一样"
+  fi
   echo " 备用密码（s-ui 连不上时用，账号留空）： $PASS"
   echo "----------------------------------------------"
-  echo " 云服务器安全组需要放行 TCP $PORT（简易版中转助手页面）"
-  echo " 以及节点端口范围（默认 10000-60000，TCP）"
+  echo " 云服务器安全组需要放行：TCP $PORT（页面）、TCP 10000-60000（节点）、TCP 80（申请证书）"
   echo " 配置文件：$DIR/config.json   日志：journalctl -u relay-lite -f"
   echo "=============================================="
 else

@@ -20,23 +20,27 @@
 
 和完整版相比 **没有**：Hysteria2 / SOCKS5 / 443 共用入站、到期时间、删除/续期/停用/换落地等线路操作、落地库、自动换落地、备用落地、双中转、订阅链接、流量/设备限额、备份恢复、多服务器、在线更新、Telegram 通知。
 
-## 安装
+## 安装（一行命令）
 
-前提：服务器已经装好 s-ui **1.3.10**，并在 s-ui 的「TLS 设置」里加好一个 Reality 配置（SNI 可填 www.apple.com，点生成密钥后保存）。
+在中转服务器上用 root 执行，最后换成这台服务器的域名（先把域名解析到这台服务器）：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh) hk2.liveshop.work
 ```
 
-安装时只问一件事：**中转机域名/IP**（客户链接里用的地址，只填域名，例如 `hk2.liveshop.work`）。是否启用 HTTPS 直接回车。
+脚本会自动完成：
 
-装完屏幕上会显示访问地址（默认端口 **2098**，路径是一串随机字母）和备用密码。
+- 没装 s-ui 的：自动装 s-ui **1.3.10**，管理员账号 `admin` + 随机密码（装完显示在屏幕上，也是 s-ui 面板 `http://域名:2095/app/` 的密码）
+- s-ui 里没有 Reality 配置的：自动生成一个（SNI `www.apple.com`）
+- 装简易版中转助手、配 HTTPS 证书、设成开机自启
+
+已经装了 s-ui 的服务器也用同一行命令，会直接沿用现有的 s-ui 和账号密码。装完屏幕上会显示访问地址（默认端口 **2098**）、账号密码和备用密码。
 
 云服务商安全组需要放行：
 
 | 端口 | 协议 | 用途 |
 |---|---|---|
-| 2098 | TCP | 一键中转页面 |
+| 2098 | TCP | 简易版中转助手页面 |
 | 10000-60000 | TCP | 客户节点端口 |
 | 80 | TCP | 申请正规 HTTPS 证书时用 |
 
@@ -46,7 +50,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/ma
 
 | 要做什么 | 命令 |
 |---|---|
-| 升级 | 再执行一遍上面的安装命令（配置保留） |
+| 升级 | 再执行一遍上面的安装命令（配置和线路都保留） |
 | 改成好记的访问路径 | `sed -i 's#"path": *"[^"]*"#"path": "/kaide/"#' /opt/relay-lite/config.json && systemctl restart relay-lite` |
 | 查看备用密码 | `grep '"password"' /opt/relay-lite/config.json` |
 | 查看证书类型 | `grep https_mode /opt/relay-lite/config.json` |

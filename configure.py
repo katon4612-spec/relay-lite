@@ -146,6 +146,12 @@ def main():
         s = app.Sui(app.CFG)
         s.login()
         print("✓ 已成功登录 s-ui")
+        app.SUI = s
+        try:
+            _, made = app.ensure_reality()
+            print("✓ 已自动创建 Reality 配置" if made else "✓ s-ui 里已有 Reality 配置")
+        except Exception as e:
+            print("⚠ %s" % e)
     except Exception as e:
         print("✗ 登录 s-ui 失败：%s\n  可以编辑 %s 修改 sui_url / sui_user / sui_pass 后重新运行安装脚本" % (e, CFG))
 
