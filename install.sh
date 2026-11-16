@@ -80,12 +80,19 @@ if [ ! -x /usr/local/s-ui/sui ]; then
   systemctl daemon-reload
   systemctl enable s-ui --now >/dev/null 2>&1
   echo -n "等待 s-ui 启动"
-  for i in $(seq 1 30); do
-    curl -s -o /dev/null "http://127.0.0.1:2095/app/" && break
-    echo -n "."; sleep 1
+  SUI_UP=""
+  for i in $(seq 1 60); do
+    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:2095/app/"; then SUI_UP=1; break; fi
+    [ "$i" = "20" ] && systemctl restart s-ui >/dev/null 2>&1
+    echo -n "."; sleep 2
   done
   echo ""
-  echo "✓ s-ui $SUI_VERSION 已安装"
+  if [ -n "$SUI_UP" ]; then
+    echo "✓ s-ui $SUI_VERSION 已安装并运行"
+  else
+    echo "⚠ s-ui 已安装，但 2 分钟内没有响应。状态："
+    systemctl status s-ui --no-pager -l 2>&1 | tail -n 15
+  fi
 fi
 
 # ---------- 安装 / 升级 简易版中转助手 ----------

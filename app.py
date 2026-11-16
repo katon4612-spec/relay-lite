@@ -979,7 +979,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == p.rstrip("/"):
             return self._send(302, "", headers={"Location": p})
-        if path == p or path == p + "index.html":
+        if path.startswith(p) and not path.startswith(p + "api/"):   # 地址后面多粘了东西也照样打开页面
             with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
                 html = f.read().replace("__BASE__", p).replace("__VERSION__", VERSION)
             return self._send(200, html, "text/html; charset=utf-8")

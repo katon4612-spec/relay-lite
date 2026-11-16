@@ -70,7 +70,8 @@ def main():
     if listen in ("0.0.0.0", "::", ""):
         listen = "127.0.0.1"
     scheme = "https" if st.get("webCertFile") and st.get("webKeyFile") else "http"
-    sui_url = old.get("sui_url") or "%s://%s:%s%s" % (scheme, listen, web_port, web_path)
+    # 读到了 s-ui 数据库就按数据库里的端口/路径连（s-ui 换过端口后重新运行安装命令能跟上）
+    sui_url = "%s://%s:%s%s" % (scheme, listen, web_port, web_path) if st else (old.get("sui_url") or "%s://%s:%s%s" % (scheme, listen, web_port, web_path))
     web_domain = st.get("webDomain") or ""
 
     print("\n客户链接里填的服务器地址（就是这台中转机的域名或 IP，例如 yyus.liveshop.work）")
@@ -144,8 +145,20 @@ def main():
     app.CFG = app.load_config()
     try:
         s = app.Sui(app.CFG)
-        s.login()
-        print("✓ 已成功登录 s-ui")
+        import time as _t2
+        for _i in range(30):   # 刚装好 / 刚重启的 s-ui 可能还没开始监听，最多等 90 秒
+            try:
+                s.login()
+                break
+            except app.SuiError as e:
+                if "连接 s-ui 失败" not in str(e) or _i == 29:
+                    raise
+                if _i == 0:
+                    print("s-ui 还没启动好，等待中…", end="", flush=True)
+                    os.system("systemctl start s-ui >/dev/null 2>&1")
+                print(".", end="", flush=True)
+                _t2.sleep(3)
+        print("\n✓ 已成功登录 s-ui")
         app.SUI = s
         try:
             _, made = app.ensure_reality()
