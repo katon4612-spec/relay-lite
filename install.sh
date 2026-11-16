@@ -77,12 +77,26 @@ if [ ! -x /usr/local/s-ui/sui ]; then
   /usr/local/s-ui/sui migrate >/dev/null
   SUI_NEW_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
   /usr/local/s-ui/sui admin -username admin -password "$SUI_NEW_PASS" >/dev/null
+  # 面板 2095 / 订阅 2096 被别的程序（比如 x-ui）占了：自动换成空闲端口，否则 s-ui 起不来
+  port_used() {
+    if command -v ss >/dev/null 2>&1; then ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"
+    else (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; fi
+  }
+  pick_free() { p=$1; while port_used "$p"; do p=$((p + 100)); done; echo "$p"; }
+  WP=2095; SP=2096
+  port_used $WP && WP=$(pick_free 2195)
+  port_used $SP && SP=$(pick_free 2196)
+  [ "$SP" = "$WP" ] && SP=$(pick_free $((WP + 1)))
+  if [ "$WP" != "2095" ] || [ "$SP" != "2096" ]; then
+    echo "端口 2095/2096 有被占用的，s-ui 改用 面板 $WP / 订阅 $SP"
+    /usr/local/s-ui/sui setting -port "$WP" -subPort "$SP" >/dev/null
+  fi
   systemctl daemon-reload
   systemctl enable s-ui --now >/dev/null 2>&1
   echo -n "等待 s-ui 启动"
   SUI_UP=""
   for i in $(seq 1 60); do
-    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:2095/app/"; then SUI_UP=1; break; fi
+    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$WP/app/"; then SUI_UP=1; break; fi
     [ "$i" = "20" ] && systemctl restart s-ui >/dev/null 2>&1
     echo -n "."; sleep 2
   done
@@ -154,7 +168,7 @@ if systemctl is-active --quiet relay-lite; then
   echo " 账号： $SUSER"
   if [ -n "$SUI_NEW_PASS" ]; then
     echo " 密码： $SUI_NEW_PASS"
-    echo "       （也是 s-ui 面板 http://$HOST:2095/app/ 的密码，请记好）"
+    echo "       （也是 s-ui 面板 http://$HOST:${WP:-2095}/app/ 的密码，请记好）"
   else
     echo " 密码： 和 s-ui 面板一样"
   fi
