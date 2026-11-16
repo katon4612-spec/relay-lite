@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>简易版中转助手</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#F4F1EB;--card:#FFFDF9;--soft:#F7F3EC;--ink:#1F1B16;--muted:#625849;--line:#E7E0D4;--line2:#D8CEBF;
+  --pri:#D97757;--pri2:#C2613F;--ring:rgba(217,119,87,.30);
+  --ok:#4E8A5A;--warn:#B57E22;--bad:#B8473A;
+  --mono:Consolas,"SF Mono",Menlo,"Cascadia Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.6 -apple-system,"PingFang SC","Microsoft YaHei","Microsoft YaHei UI","Hiragino Sans GB","Noto Sans SC",sans-serif;font-variant-numeric:tabular-nums}
+::selection{background:#F5D8CB}
+.logo::before{content:"";width:24px;height:10px;flex:none;
+  background:radial-gradient(circle at 5px 5px,var(--pri) 4px,transparent 4.5px),radial-gradient(circle at 19px 5px,var(--card) 2px,transparent 2.5px),radial-gradient(circle at 19px 5px,var(--pri) 4.5px,transparent 5px),linear-gradient(var(--pri),var(--pri)) 5px 4px/14px 2px no-repeat}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:10px}
+header .host{color:var(--muted);font:13px var(--mono);padding-left:14px;border-left:1px solid var(--line)}
+header #logout{margin-left:auto}
+main{max-width:1100px;margin:22px auto;padding:0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 14px;font-weight:600}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.row label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted);font-weight:500}
+input,select,textarea{font:inherit;border:1px solid var(--line2);border-radius:8px;padding:7px 11px;background:#fff;color:var(--ink)}
+textarea{width:100%;min-height:160px;font-family:var(--mono);font-size:13px;line-height:1.6;background:var(--soft)}
+textarea:focus{background:#fff}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px var(--ring)}
+input::placeholder,textarea::placeholder{color:#958A7B}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line2);background:var(--card);padding:7px 15px;color:var(--ink)}
+button:hover{background:var(--soft);border-color:#C9BBA8}
+button:focus-visible,.ck:focus-within{outline:none;box-shadow:0 0 0 3px var(--ring)}
+button.pri{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
+button.pri:hover{background:var(--pri2);border-color:var(--pri2)}
+button.sm{padding:3px 10px;font-size:13px;border-radius:6px}
+button:disabled{opacity:.42;cursor:default}
+.hint{color:var(--muted);font-size:13px;margin:6px 0 0;line-height:1.65}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:13px;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:1px solid var(--line2)}
+.mono{font-family:var(--mono);font-size:13px}
+.tag{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12.5px;font-weight:500;line-height:20px;white-space:nowrap;--c:#6E6458;color:var(--c);background:color-mix(in srgb,var(--c) 11%,var(--card));border:1px solid color-mix(in srgb,var(--c) 20%,transparent)}
+.tag.ok{--c:var(--ok)}.tag.bad{--c:var(--bad)}
+.protos{display:flex;gap:6px;flex-wrap:wrap}
+.ck{display:inline-flex!important;flex-direction:row!important;align-items:center;gap:7px;border:1px solid var(--line2);border-radius:8px;padding:6px 11px;color:var(--ink)!important;font-size:13px!important;cursor:pointer;background:var(--card)}
+.ck:has(input:checked){border-color:var(--pri);background:color-mix(in srgb,var(--pri) 8%,var(--card))}
+.ck input{margin:0;accent-color:var(--pri)}
+.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.res{border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;background:var(--card)}
+.res .name{font-weight:600;word-break:break-all}
+.res .qr svg{width:180px;height:180px}
+.res .link{font-size:11px;word-break:break-all;color:var(--muted);max-height:48px;overflow:hidden;margin:6px 0}
+.acts{display:flex;gap:4px;justify-content:center}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.login{max-width:380px;margin:14vh auto;padding:28px}
+.login h2{display:flex;align-items:center;gap:10px;font-size:18px;margin-bottom:18px}
+.err{color:var(--bad)}.muted{color:var(--muted)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,8px);background:var(--ink);color:#FBF5EC;padding:11px 20px;border-radius:10px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:90vw;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid #E2D6C6;border-top-color:var(--pri);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
+@keyframes s{to{transform:rotate(360deg)}}
+@media(max-width:720px){
+ header{padding:8px 12px}header .host{display:none}
+ main{padding:0 8px;margin-top:10px}.card{padding:14px}
+ input,select,textarea{font-size:16px}button{min-height:38px}
+ table,table tbody,table tr,table td{display:block;width:auto}
+ table tr:first-child{display:none}
+ table tr{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+ table td{border:0;padding:3px 0}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script>
+const BASE="__BASE__";
+const $=s=>document.querySelector(s);
+const H=(sel,html)=>{const e=$(sel);if(e)e.innerHTML=html;return e};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const protoName={vless:"VLESS-Reality",vless443:"VLESS-443共用",hysteria2:"Hysteria2",socks:"SOCKS5",mixed:"Mixed",vmess:"VMess",trojan:"Trojan",shadowsocks:"SS",tuic:"TUIC",anytls:"AnyTLS",http:"HTTP"};
+let state={host:"",preview:null,pvcheck:{},results:null,text:""};
+
+async function api(a,body){
+  const r=await fetch(BASE+"api/"+a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+  const j=await r.json().catch(()=>({ok:false,error:"服务器无响应"}));
+  if(j.login){renderLogin();throw new Error("请先登录")}
+  if(!j.ok)throw new Error(j.error||"操作失败");
+  return j;
+}
+function toast(m,ms=2600){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),ms)}
+function copy(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("已复制")).catch(()=>{const a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();document.execCommand("copy");a.remove();toast("已复制")})}
+function coreMsg(c){if(c==="restarted")return "，已重启 s-ui 使路由生效（约 3 秒断线）";if(c==="down")return "。⚠ s-ui 内核未能启动，请登录服务器执行 systemctl restart s-ui";return ""}
+
+function renderLogin(){
+  $("#app").innerHTML=`<div class="card login"><h2 class="logo">简易版中转助手</h2>
+  <input id="un" placeholder="账号（和 s-ui 面板一样）" style="width:100%" autocomplete="username" autofocus>
+  <input id="pw" type="password" placeholder="密码（和 s-ui 面板一样）" style="width:100%;margin-top:10px" autocomplete="current-password">
+  <div style="margin-top:12px"><button class="pri" id="lg" style="width:100%">登录</button></div><p class="err" id="lerr"></p>
+  <p class="hint">s-ui 连不上时，账号留空、用备用密码登录。</p></div>`;
+  const go=async()=>{try{await api("login",{username:$("#un").value.trim(),password:$("#pw").value});init()}catch(e){$("#lerr").textContent=e.message}};
+  $("#lg").onclick=go;$("#pw").onkeydown=e=>{if(e.key==="Enter")go()};$("#un").onkeydown=e=>{if(e.key==="Enter")$("#pw").focus()};
+}
+
+function renderMain(){
+  const saved=JSON.parse(LS.get("rl_form")||"{}");
+  $("#app").innerHTML=`<header><h1 class="logo">简易版中转助手</h1><span class="host">${esc(state.host)}</span><button id="logout" class="sm">退出</button></header>
+  <main><div class="card"><h2>1. 粘贴落地</h2>
+  <div class="row">
+    <label>客户名 <input id="cust" placeholder="如：见山" value="${esc(saved.cust||"")}"></label>
+    <label>入站协议（客户连接用，可多选）<span class="protos" id="protos">
+      <label class="ck"><input type="checkbox" value="vless">VLESS-Reality</label>
+      <label class="ck"><input type="checkbox" value="hysteria2">Hysteria2</label>
+      <label class="ck"><input type="checkbox" value="socks">SOCKS5</label>
+      <label class="ck" title="所有客户共用一个 443 端口（像普通 HTTPS），按用户分流到各自落地"><input type="checkbox" value="vless443">VLESS-443 共用</label></span></label>
+    <label>到期 <select id="days"><option value="30">30 天</option><option value="60">60 天</option><option value="90">90 天</option><option value="180">180 天</option><option value="365">365 天</option><option value="0">永久</option><option value="custom">指定日期…</option></select></label>
+    <label id="cdl" style="display:none">到期日期 <input id="cdate" type="datetime-local"></label>
+  </div>
+  <div style="margin-top:12px"><textarea id="txt" placeholder="每行一条落地，支持：
+socks5://账号:密码@IP:端口
+IP:端口:账号:密码
+vless://…  hy2://…  ss://…  trojan://…  vmess://…  tuic://…
+也可以在前面加名字：  我的线路A socks5://账号:密码@IP:端口"></textarea></div>
+  <p class="hint">节点名自动生成为「落地国家 + 客户名 + 落地IP」，下一步可以改。多选协议时，同一个落地会生成多个节点（第二个起名字后加 -HY2 / -S5 / -443）。</p>
+  <div class="row" style="margin-top:10px"><button class="pri" id="pv">解析预览</button></div></div>
+  <div id="pvbox"></div><div id="resbox"></div>
+  <p class="hint" style="text-align:center">简易版中转助手 v__VERSION__ · 建好的节点在 s-ui 面板里续期、停用、删除</p></main>`;
+  const sp=saved.protos||["vless"];document.querySelectorAll("#protos input").forEach(c=>c.checked=sp.includes(c.value));
+  $("#days").value=saved.days||"30";
+  const sync=()=>{$("#cdl").style.display=$("#days").value==="custom"?"flex":"none"};$("#days").onchange=sync;sync();
+  $("#txt").value=state.text;$("#txt").oninput=()=>{state.text=$("#txt").value};
+  $("#pv").onclick=doPreview;
+  $("#logout").onclick=async()=>{await fetch(BASE+"api/logout",{method:"POST"});renderLogin()};
+  if(state.preview)renderPreview();if(state.results)renderResults();
+}
+const selProtos=()=>[...document.querySelectorAll("#protos input:checked")].map(c=>c.value);
+function expiryTs(){const v=$("#days").value;if(v==="0")return 0;if(v==="custom"){const d=$("#cdate").value;if(!d)throw new Error("请选择到期日期");return Math.floor(new Date(d).getTime()/1000)}return Math.floor(Date.now()/1000)+parseInt(v)*86400}
+
+async function doPreview(){
+  const b=$("#pv");b.disabled=true;b.innerHTML='<span class="spin"></span> 解析中';
+  LS.set("rl_form",JSON.stringify({cust:$("#cust").value,protos:selProtos(),days:$("#days").value}));
+  try{const r=await api("preview",{text:$("#txt").value,customer:$("#cust").value.trim()});state.preview=r.items;state.pvcheck={};state.results=null;H("#resbox","");renderPreview()}
+  catch(e){toast(e.message)}finally{const bb=$("#pv");if(bb){bb.disabled=false;bb.textContent="解析预览"}}
+}
+function pcHtml(c){if(!c)return '<span class="muted">-</span>';if(c==="..")return '<span class="spin"></span>';return c.ok?`<span class="tag ok">通 ${c.delay}ms</span>`:`<span class="tag bad" title="${esc(c.error)}">不通</span>`}
+function renderPreview(){
+  const it=state.preview||[];const good=it.filter(x=>!x.error).length;
+  H("#pvbox",`<div class="card"><h2>2. 确认线路（${good} 条可用${it.length-good?`，${it.length-good} 条有误`:""}）</h2>
+  <div style="overflow:auto"><table><tr><th>#</th><th>节点名（可改）</th><th>落地</th><th>类型</th><th>检测</th></tr>
+  ${it.map((x,i)=>x.error?`<tr><td>${i+1}</td><td colspan="4"><span class="err">✗ ${esc(x.error)}</span> <span class="mono muted">${esc(x.raw)}</span></td></tr>`:
+  `<tr><td>${i+1}</td><td><input data-i="${i}" class="nm" value="${esc(x.name)}" style="width:100%;min-width:180px"></td>
+   <td class="mono">${esc(x.outbound.server)}:${esc(x.outbound.server_port)}${x.country?` <span class="tag">${esc(x.country)}</span>`:""}</td>
+   <td>${esc(protoName[x.outbound.type]||x.outbound.type)}</td><td id="pc${i}">${pcHtml(state.pvcheck[i])}</td></tr>`).join("")}
+  </table></div>
+  <div class="row" style="margin-top:12px"><button id="pchk" ${good?"":"disabled"}>检测落地</button><button class="pri" id="mk" ${good?"":"disabled"}>创建 ${good} 条线路</button>
+  <span class="hint">完成后会自动重启 s-ui 让路由生效，所有线路约断 3 秒。</span></div></div>`);
+  document.querySelectorAll(".nm").forEach(n=>n.oninput=()=>{state.preview[n.dataset.i].name=n.value.trim()});
+  $("#pchk").onclick=preCheck;$("#mk").onclick=doCreate;
+}
+async function preCheck(){
+  const idx=[],items=[];state.pvcheck={};
+  state.preview.forEach((x,i)=>{if(!x.error){idx.push(i);items.push(x);state.pvcheck[i]="..";H("#pc"+i,pcHtml(".."))}});
+  try{const r=await api("check_raw",{items});r.results.forEach((c,k)=>{state.pvcheck[idx[k]]=c;H("#pc"+idx[k],pcHtml(c))});
+    const bad=r.results.filter(c=>!c.ok).length;toast(bad?`${bad} 条落地不通，鼠标悬停看原因`:"全部落地连通")}
+  catch(e){toast(e.message)}
+}
+async function doCreate(){
+  let expiry;try{expiry=expiryTs()}catch(e){return toast(e.message)}
+  const items=state.preview.filter(x=>!x.error&&x.name);
+  const protos=selProtos();if(!protos.length)return toast("请至少勾选一个入站协议");
+  if(!items.length)return toast("没有可创建的线路");
+  const badN=Object.values(state.pvcheck).filter(c=>c&&c!==".."&&!c.ok).length;
+  if(!confirm(`${badN?`⚠ 有 ${badN} 条落地检测不通，仍会一起创建。\n\n`:""}新建 ${items.length} 条落地 × ${protos.length} 种协议 = ${items.length*protos.length} 个节点\n\n完成后会重启 s-ui 让路由生效，所有线路约断 3 秒。确定？`))return;
+  const b=$("#mk");b.disabled=true;b.innerHTML='<span class="spin"></span> 创建中…';
+  try{const r=await api("create",{items,protocols:protos,expiry,customer:$("#cust").value.trim()});
+    state.results=r.results;const ok=r.results.filter(x=>x.ok).length;
+    state.preview=null;H("#pvbox","");state.text="";$("#txt").value="";   // 防止同一批重复创建
+    toast(`成功 ${ok} 个节点${ok<r.results.length?`，失败 ${r.results.length-ok} 个`:""}${coreMsg(r.core)}`,6000);
+    renderResults()}
+  catch(e){toast(e.message,5000);const bb=$("#mk");if(bb){bb.disabled=false;bb.textContent="重试"}}
+}
+async function renderResults(){
+  const rs=state.results||[];const ok=rs.filter(x=>x.ok);
+  H("#resbox",`<div class="card"><h2>3. 客户链接（${ok.length} 条）</h2>
+  <div class="toolbar"><button class="pri" id="cpall">复制全部链接</button><button id="dlall">下载全部二维码（压缩包）</button>
+  ${ok.some(x=>!x.firewall)?'<span class="hint">提醒：确认云安全组已放行这些端口</span>':""}</div>
+  ${rs.filter(x=>!x.ok).map(x=>`<p class="err">✗ ${esc(x.name)}：${esc(x.error)}</p>`).join("")}
+  <div class="results">${ok.map((x,i)=>`<div class="res"><div class="name">${esc(x.name)}</div><div class="muted">${esc(protoName[x.protocol]||"")} · 端口 ${x.port}</div>
+  <div class="qr" id="rq${i}"><span class="spin"></span></div><div class="link mono">${esc((x.links||[])[0]||"")}</div>
+  <div class="acts"><button class="sm" data-cp="${i}">复制链接</button><button class="sm" data-dl="${i}">下载二维码</button></div></div>`).join("")}</div></div>`);
+  $("#cpall").onclick=()=>copy(ok.map(x=>(x.links||[])[0]).filter(Boolean).join("\n"));
+  document.querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>{const l=(ok[b.dataset.cp].links||[])[0];l?copy(l):toast("没有链接")});
+  document.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{const x=ok[b.dataset.dl];downloadQR(x.name,x.svg,x.port)});
+  $("#dlall").onclick=()=>downloadAllZip(ok,($("#cust")&&$("#cust").value.trim()||"中转")+"_二维码");
+  for(let i=0;i<ok.length;i++){try{if(!ok[i].svg&&(ok[i].links||[])[0]){const q=await api("qr",{text:ok[i].links[0]});ok[i].svg=q.svg}H("#rq"+i,ok[i].svg||'<span class="muted">没有链接</span>')}catch(e){}}
+}
+
+/* 二维码图片：二维码 + 节点名 + 地址 */
+const safeName=n=>String(n||"qr").replace(/[\\/:*?"<>|\r\n]/g,"_").trim()||"qr";
+function qrPng(name,svg,port){
+  return new Promise(res=>{
+    if(!svg)return res(null);
+    const img=new Image();img.onload=()=>{const W=600,HH=700,c=document.createElement("canvas");c.width=W;c.height=HH;const g=c.getContext("2d");
+      g.fillStyle="#fff";g.fillRect(0,0,W,HH);g.imageSmoothingEnabled=false;g.drawImage(img,40,30,520,520);
+      g.fillStyle="#111";g.textAlign="center";g.font="bold 30px 'PingFang SC','Microsoft YaHei',sans-serif";g.fillText(name,W/2,600,W-30);
+      g.fillStyle="#666";g.font="20px sans-serif";g.fillText(state.host+(port?":"+port:""),W/2,645,W-30);
+      c.toBlob(b=>res(b),"image/png")};
+    img.onerror=()=>res(null);
+    img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+  });
+}
+function saveBlob(blob,filename){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
+async function downloadQR(name,svg,port){const b=await qrPng(name,svg,port);if(b)saveBlob(b,safeName(name)+".png");else toast("二维码还没生成好")}
+/* 最小 ZIP 打包（不压缩）；文件名 UTF-8，Windows 自带解压能正确显示中文 */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC_T[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],central=[];let off=0;
+  const d=new Date(),dt=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1))&0xFFFF,dd=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  for(const f of files){
+    const name=enc.encode(f.name),data=f.data,crc=crc32(data);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);
+    h.setUint16(10,dt,true);h.setUint16(12,dd,true);h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);
+    h.setUint16(26,name.length,true);h.setUint16(28,0,true);
+    parts.push(h,name,data);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);
+    c.setUint16(12,dt,true);c.setUint16(14,dd,true);c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);
+    c.setUint16(28,name.length,true);c.setUint16(30,0,true);c.setUint16(32,0,true);c.setUint16(34,0,true);c.setUint16(36,0,true);c.setUint32(38,0,true);c.setUint32(42,off,true);
+    central.push(c,name);
+    off+=30+name.length+data.length;
+  }
+  const cdSize=central.reduce((s,x)=>s+x.byteLength,0);
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);end.setUint32(12,cdSize,true);end.setUint32(16,off,true);
+  return new Blob([...parts,...central,end],{type:"application/zip"});
+}
+async function downloadAllZip(items,zipName){
+  if(!items.length)return toast("没有可下载的二维码");
+  toast(`正在打包 ${items.length} 张二维码…`,60000);
+  const files=[],used=new Set();
+  for(const x of items){
+    try{if(!x.svg&&(x.links||[])[0]){const q=await api("qr",{text:x.links[0]});x.svg=q.svg}}catch(e){}
+    const b=await qrPng(x.name,x.svg,x.port);if(!b)continue;
+    let n=safeName(x.name),k=2;while(used.has(n)){n=safeName(x.name)+"-"+k++}used.add(n);
+    files.push({name:n+".png",data:new Uint8Array(await b.arrayBuffer())});
+  }
+  const p=n=>String(n).padStart(2,"0"),d=new Date();
+  saveBlob(makeZip(files),safeName(zipName)+`_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.zip`);
+  toast(`已下载压缩包（${files.length} 张二维码）`);
+}
+
+async function init(){
+  let s;try{s=await api("status")}catch(e){if(e.message==="请先登录")return;renderMain();return toast(e.message,8000)}
+  state.host=s.public_host;renderMain();
+  if(!s.reality_tls)toast("提示：s-ui 里还没有 Reality 配置，VLESS-Reality / 443 共用暂时不能用",6000);
+}
+init();
+</script>
+</body>
+</html>
