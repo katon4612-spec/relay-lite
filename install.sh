@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 简易版中转助手 一行安装（在中转服务器上用 root 运行）
 #   bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh) 你的域名
+#   没有域名：后面什么都不写，自动用服务器公网 IP
 # 没装 s-ui 的会自动装 s-ui 1.3.10（随机管理员密码）并建好 Reality 配置；已装的直接用。
 # 再执行一次 = 升级（配置和线路都保留）；最后加 uninstall = 卸载（s-ui 里的节点不受影响）。
 set -e
@@ -20,13 +21,8 @@ if [ "$1" = "uninstall" ]; then
   exit 0
 fi
 
-# 命令后面带的域名：不再问
-if [ -n "$1" ]; then
-  export RL_PUBLIC_HOST="$1"
-  export RL_HTTPS_YES=1
-fi
-
 need() { command -v "$1" >/dev/null 2>&1; }
+
 pkg_install() {
   (apt-get update -y >/dev/null 2>&1 && apt-get install -y "$@") || yum install -y "$@" || dnf install -y "$@"
 }
@@ -35,6 +31,25 @@ need tar || pkg_install tar
 need python3 || { echo "安装 python3 ..."; pkg_install python3; }
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' || { echo "需要 Python 3.7 以上"; exit 1; }
 python3 -c 'import sqlite3' || { echo "python3 缺少 sqlite3 模块"; exit 1; }
+
+# 命令后面带了域名（或 IP）就用它；没带、又是第一次安装：自动用这台服务器的公网 IP。都不再问。
+if [ -n "$1" ]; then
+  export RL_PUBLIC_HOST="$1"
+  export RL_HTTPS_YES=1
+elif [ ! -f "$DIR/config.json" ]; then
+  IP=""
+  for u in https://api.ipify.org https://ifconfig.me/ip https://ipv4.icanhazip.com; do
+    IP="$(curl -4 -fsS --max-time 6 "$u" 2>/dev/null | tr -d '[:space:]')" || true
+    echo "$IP" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && break
+    IP=""
+  done
+  [ -z "$IP" ] && IP="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n1)"
+  if [ -n "$IP" ]; then
+    echo "没有填域名，使用本机公网 IP：$IP"
+    export RL_PUBLIC_HOST="$IP"
+    export RL_HTTPS_YES=1
+  fi
+fi
 
 # ---------- 没装 s-ui：自动安装 s-ui 1.3.10 ----------
 SUI_NEW_PASS=""
@@ -139,6 +154,9 @@ if systemctl is-active --quiet relay-lite; then
   echo " 备用密码（s-ui 连不上时用，账号留空）： $PASS"
   echo "----------------------------------------------"
   echo " 云服务器安全组需要放行：TCP $PORT（页面）、TCP 10000-60000（节点）、TCP 80（申请证书）"
+  if python3 -c "import ipaddress,sys;ipaddress.ip_address(sys.argv[1])" "$HOST" 2>/dev/null; then
+    echo " 用的是 IP，页面是自签名证书：浏览器提示「不安全」时点「高级 → 继续访问」即可（传输照样加密，节点不受影响）"
+  fi
   echo " 配置文件：$DIR/config.json   日志：journalctl -u relay-lite -f"
   echo "=============================================="
 else

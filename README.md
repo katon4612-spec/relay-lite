@@ -22,7 +22,7 @@
 
 ## 安装（一行命令）
 
-在中转服务器上用 root 执行，最后换成这台服务器的域名（先把域名解析到这台服务器）：
+在中转服务器上用 root 执行。有域名的，最后换成这台服务器的域名（先把域名解析到这台服务器）：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh) hk2.liveshop.work
@@ -33,6 +33,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/ma
 - 没装 s-ui 的：自动装 s-ui **1.3.10**，管理员账号 `admin` + 随机密码（装完显示在屏幕上，也是 s-ui 面板 `http://域名:2095/app/` 的密码）
 - s-ui 里没有 Reality 配置的：自动生成一个（SNI `www.apple.com`）
 - 装简易版中转助手、配 HTTPS 证书、设成开机自启
+
+**没有域名**：后面什么都不写，自动用服务器的公网 IP（客户链接里也是 IP）：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/katon4612-spec/relay-lite/main/install.sh)
+```
+
+用 IP 时页面是自签名证书，浏览器第一次打开提示「不安全」，点「高级 → 继续访问」即可（传输照样加密，节点不受影响）。
 
 已经装了 s-ui 的服务器也用同一行命令，会直接沿用现有的 s-ui 和账号密码。装完屏幕上会显示访问地址（默认端口 **2098**）、账号密码和备用密码。
 
