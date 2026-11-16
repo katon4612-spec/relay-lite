@@ -42,7 +42,7 @@ sys.path.insert(0, HERE)
 import qrencoder  # noqa: E402  (vendored, MIT)
 
 CONFIG_PATH = os.environ.get("RELAY_LITE_CONFIG", os.path.join(HERE, "config.json"))
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 DEFAULTS = {
     "listen": "0.0.0.0",
@@ -701,7 +701,7 @@ def client_links(cid):
 
 def op_create(body):
     items = [it for it in body.get("items") or [] if not it.get("error") and it.get("name")]
-    expiry = int(body.get("expiry") or 0)
+    expiry = 0   # 不设到期，节点永久有效
     group = (body.get("customer") or "").strip()
     if not items:
         raise SuiError("没有可创建的线路")
@@ -778,7 +778,6 @@ def _rows(data):
             "outbound_tag": ot, "landing": "%s:%s" % (ob.get("server"), ob.get("server_port")) if ob.get("server") else (ot or ""),
             "landing_type": ob.get("type") or "",
             "client_id": c.get("id") if c else None, "customer": (c or {}).get("group") or "",
-            "enable": bool(c.get("enable")) if c else None, "expiry": (c or {}).get("expiry") or 0,
             "created": mine.get(tag, 0),
         })
     rows.sort(key=lambda r: (r["created"], r.get("inbound_id") or 0), reverse=True)
