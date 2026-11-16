@@ -949,7 +949,7 @@ class Handler(BaseHTTPRequestHandler):
                 FAILS[ip] = fl
                 time.sleep(1)
                 return self._send(200, {"ok": False, "error": ("没能向 s-ui 验证账号（%s）。可以账号留空、用备用密码登录（grep password /opt/relay-lite/config.json）" % LOGIN_ERR["detail"])
-                                        if sui_down else "账号或密码错误（和 s-ui 面板的一样）"})
+                                        if sui_down else "账号或密码错误"})
             sid = secrets.token_urlsafe(32)
             SESSIONS[sid] = time.time() + SESSION_AGE
             save_sessions()
