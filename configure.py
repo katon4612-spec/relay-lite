@@ -71,7 +71,7 @@ def main():
         listen = "127.0.0.1"
     scheme = "https" if st.get("webCertFile") and st.get("webKeyFile") else "http"
     # 读到了 s-ui 数据库就按数据库里的端口/路径连（s-ui 换过端口后重新运行安装命令能跟上）
-    sui_url = "%s://%s:%s%s" % (scheme, listen, web_port, web_path) if st else (old.get("sui_url") or "%s://%s:%s%s" % (scheme, listen, web_port, web_path))
+    sui_url = "%s://%s:%s%s" % (scheme, listen, web_port, web_path) if db else (old.get("sui_url") or "%s://%s:%s%s" % (scheme, listen, web_port, web_path))
     web_domain = st.get("webDomain") or ""
 
     print("\n客户链接里填的服务器地址（就是这台中转机的域名或 IP，例如 yyus.liveshop.work）")
