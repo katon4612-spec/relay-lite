@@ -160,11 +160,11 @@ function pcHtml(c){if(!c)return '<span class="muted">-</span>';if(c==="..")retur
 function renderPreview(){
   const it=state.preview||[];const good=it.filter(x=>!x.error).length;
   H("#pvbox",`<div class="card"><h2>2. 确认线路（${good} 条可用${it.length-good?`，${it.length-good} 条有误`:""}）</h2>
-  <div style="overflow:auto"><table><tr><th>#</th><th>节点名（可改）</th><th>落地</th><th>落地类型</th><th>检测</th></tr>
-  ${it.map((x,i)=>x.error?`<tr><td>${i+1}</td><td colspan="4"><span class="err">✗ ${esc(x.error)}</span> <span class="mono muted">${esc(x.raw)}</span></td></tr>`:
+  <div style="overflow:auto"><table><tr><th>#</th><th>节点名（可改）</th><th>落地</th><th>检测</th></tr>
+  ${it.map((x,i)=>x.error?`<tr><td>${i+1}</td><td colspan="3"><span class="err">✗ ${esc(x.error)}</span> <span class="mono muted">${esc(x.raw)}</span></td></tr>`:
   `<tr><td>${i+1}</td><td><input data-i="${i}" class="nm" value="${esc(x.name)}" style="width:100%;min-width:180px"></td>
    <td class="mono">${esc(x.outbound.server)}:${esc(x.outbound.server_port)}${x.country?` <span class="tag">${esc(x.country)}</span>`:""}</td>
-   <td>${esc(protoName[x.outbound.type]||x.outbound.type)}</td><td id="pc${i}">${pcHtml(state.pvcheck[i])}</td></tr>`).join("")}
+   <td id="pc${i}">${pcHtml(state.pvcheck[i])}</td></tr>`).join("")}
   </table></div>
   <div class="row" style="margin-top:12px"><button id="pchk" ${good?"":"disabled"}>检测落地</button><button class="pri" id="mk" ${good?"":"disabled"}>创建 ${good} 条线路</button>
   <span class="hint">完成后会自动重启 s-ui 让路由生效，所有线路约断 3 秒。</span></div></div>`);
