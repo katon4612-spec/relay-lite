@@ -4,7 +4,7 @@
 简易版中转助手 (relay-lite) —— 只有「一键中转」
 
 粘贴落地（socks5 / http / vless / vmess / trojan / hy2 / ss / tuic / anytls 链接，或 IP:端口:账号:密码）
-→ 在 s-ui 里自动建好：出站(落地) + 入站(VLESS-Reality / Hysteria2 / SOCKS5 / VLESS-443 共用) + 用户 + 路由规则
+→ 在 s-ui 里自动建好：出站(落地) + 入站(VLESS-Reality) + 用户 + 路由规则
 → 输出客户链接和二维码。
 
 基于中转助手 relay-helper 的一键中转部分精简而来。只依赖 Python 3 标准库，通过 s-ui 1.3.10 自带的 API 操作。
@@ -56,7 +56,6 @@ DEFAULTS = {
     "public_host": "",
     "port_min": 10000,
     "port_max": 60000,
-    "shared_port": 443,
     "check_url": "https://www.gstatic.com/generate_204",
     "geo_lookup": True,
     "auto_firewall": True,
@@ -511,10 +510,6 @@ def reserve_ports():
 
 
 # ----------------------------------------------------------- 一键中转 --
-PROTO_SUFFIX = {"vless": "", "hysteria2": "-HY2", "socks": "-S5", "vless443": "-443"}
-SHARED_PREFIX = "共用"
-
-
 def op_preview(body):
     """解析粘贴的落地，生成节点名（落地国家 + 客户名 + 落地 IP）。"""
     lines = [l for l in (body.get("text") or "").splitlines() if l.strip()]
@@ -583,61 +578,11 @@ def op_check_raw(body):
     return {"results": res}
 
 
-def _ensure_shared(data, tls_id, taken_ports):
-    """找到或建好共用 VLESS-Reality 入站（默认 443），返回 (tag, id, 需要加的兜底规则)。"""
-    port = int(CFG.get("shared_port") or 443)
-    tag = "%s%d-VLESS" % (SHARED_PREFIX, port)
-    for i in data.get("inbounds") or []:
-        if i.get("tag") == tag:
-            return tag, i["id"], []
-    for i in data.get("inbounds") or []:
-        if str(i.get("listen_port")) == str(port):
-            raise SuiError("端口 %d 已被节点「%s」占用，先在 s-ui 里把它换到别的端口，再建共用节点" % (port, i.get("tag")))
-    if not port_free(port, False):
-        raise SuiError("端口 %d 被这台服务器上的其他程序占用（比如 nginx），共用节点用不了" % port)
-    inb = {"type": "vless", "tag": tag, "listen": "::", "listen_port": port, "tls_id": tls_id, "addrs": [],
-           "out_json": {}, "transport": {}}
-    res = SUI.save("inbounds", "new", inb, init_users="")
-    iid = next((i["id"] for i in (res or {}).get("inbounds") or [] if i.get("tag") == tag), None)
-    if not iid:
-        raise SuiError("共用入站创建后未找到 id")
-    taken_ports.add(port)
-    data.setdefault("inbounds", []).append({"id": iid, "tag": tag, "listen_port": port, "type": "vless"})
-    open_firewall(port, False)
-    # 兜底：共用入站上没匹配到任何用户规则的连接一律拒绝
-    return tag, iid, [{"inbound": [tag], "action": "reject"}]
-
-
-def _make_shared_user(name, shared, expiry, group, outbound_tag):
-    tag, iid, extra = shared
-    client = {"enable": True, "name": name, "config": client_config(name), "inbounds": [iid],
-              "links": [], "volume": 0, "expiry": int(expiry or 0), "up": 0, "down": 0,
-              "desc": "简易版中转助手创建（共用 %s）" % tag, "group": group or ""}
-    res = SUI.save("clients", "new", client)
-    cid = next((c["id"] for c in (res or {}).get("clients") or [] if c.get("name") == name), None)
-    if not cid:
-        raise SuiError("用户创建后未找到 id")
-    return {"name": name, "protocol": "vless443", "port": int(CFG.get("shared_port") or 443), "client_id": cid,
-            "ok": True, "firewall": "", "outbound": outbound_tag, "shared": True,
-            "rules": [{"inbound": [tag], "auth_user": [name], "action": "route", "outbound": outbound_tag}] + extra}
-
-
-def _prepare(data, protos):
-    """检查协议需要的 TLS 配置，返回 {proto: tls_id}，以及已占用的名字和端口。"""
-    tls = {}
-    for proto in protos:
-        if proto in ("vless", "vless443"):
-            tls[proto] = find_tls(data, "reality")
-            if not tls[proto]:
-                raise SuiError("s-ui 里没有 Reality 配置。请先在面板「TLS 设置」里添加一个 reality 类型的配置")
-        elif proto == "hysteria2":
-            tls[proto] = find_tls(data, "cert")
-            if not tls[proto]:
-                raise SuiError("s-ui 里没有证书类 TLS 配置（Hysteria2 需要）。请先在面板「TLS 设置」里添加")
-        elif proto == "socks":
-            tls[proto] = 0
-        else:
-            raise SuiError("不支持的入站协议：" + proto)
+def _prepare(data):
+    """检查 Reality 配置，返回 tls_id，以及已占用的名字和端口。"""
+    tls_id = find_tls(data, "reality")
+    if not tls_id:
+        raise SuiError("s-ui 里没有 Reality 配置。请先在面板「TLS 设置」里添加一个 reality 类型的配置")
     taken_names = {i.get("tag") for i in data.get("inbounds") or []} | {o.get("tag") for o in data.get("outbounds") or []} | {c.get("name") for c in data.get("clients") or []}
     taken_ports = used_ports(data)
     settings = SUI.get("settings") or {}
@@ -647,19 +592,16 @@ def _prepare(data, protos):
         except (TypeError, ValueError):
             pass
     taken_ports.add(int(CFG["port"]))
-    return tls, taken_names, taken_ports
+    return tls_id, taken_names, taken_ports
 
 
-def _make_inbound(name, proto, tls_id, expiry, group, taken_ports, outbound_tag):
-    """建一个入站 + 用户。成功返回结果（含要加的路由规则）；失败时回滚自己建的部分并抛异常。"""
+def _make_inbound(name, tls_id, expiry, group, taken_ports, outbound_tag):
+    """建一个 VLESS-Reality 入站 + 用户。成功返回结果（含要加的路由规则）；失败时回滚自己建的部分并抛异常。"""
     created = {}
     try:
-        port = pick_port(taken_ports, proto == "hysteria2")
-        inb = {"type": proto, "tag": name, "listen": "::", "listen_port": port, "tls_id": tls_id, "addrs": [], "out_json": {}}
-        if proto == "hysteria2":
-            inb["ignore_client_bandwidth"] = True
-        if proto == "vless":
-            inb["transport"] = {}
+        port = pick_port(taken_ports, False)
+        inb = {"type": "vless", "tag": name, "listen": "::", "listen_port": port, "tls_id": tls_id, "addrs": [],
+               "out_json": {}, "transport": {}}
         res = SUI.save("inbounds", "new", inb, init_users="")
         inb_id = next((i["id"] for i in (res or {}).get("inbounds") or [] if i.get("tag") == name), None)
         if not inb_id:
@@ -671,11 +613,10 @@ def _make_inbound(name, proto, tls_id, expiry, group, taken_ports, outbound_tag)
         res = SUI.save("clients", "new", client)
         cid = next((c["id"] for c in (res or {}).get("clients") or [] if c.get("name") == name), None)
         created["client"] = cid
-        fw = open_firewall(port, proto == "hysteria2")
-        return {"name": name, "protocol": proto, "port": port, "client_id": cid, "ok": True, "firewall": fw,
+        fw = open_firewall(port, False)
+        return {"name": name, "protocol": "vless", "port": port, "client_id": cid, "ok": True, "firewall": fw,
                 "outbound": outbound_tag,
-                # 第二条是兜底：用户停用/过期后 SOCKS5 入站会变成免认证，没匹配上落地规则的连接一律拒绝，
-                # 否则会从中转机直接出网（变成公开代理）
+                # 第二条是兜底：用户停用/过期后，没匹配上落地规则的连接一律拒绝，不会从中转机直接出网
                 "rules": [{"inbound": [name], "auth_user": [name], "action": "route", "outbound": outbound_tag},
                           {"inbound": [name], "action": "reject"}]}
     except Exception:
@@ -697,7 +638,7 @@ def _apply_rules(results, new_outbounds):
     new_rules = [x for r in results if r.get("ok") and "rules" in r for x in r.pop("rules")]
     if not new_rules:
         return "ok"
-    # 兜底拒绝规则必须排在同一入站的所有用户规则后面（共用入站一批会有多个用户）
+    # 兜底拒绝规则排在所有用户规则后面
     rej = lambda x: x.get("action") == "reject" and not x.get("auth_user")
     new_rules = [x for x in new_rules if not rej(x)] + [x for x in new_rules if rej(x)]
     cfg = SUI.get("config")
@@ -735,46 +676,31 @@ def client_links(cid):
 
 def op_create(body):
     items = [it for it in body.get("items") or [] if not it.get("error") and it.get("name")]
-    protos = [p for p in dict.fromkeys(body.get("protocols") or []) if p]
     expiry = int(body.get("expiry") or 0)
     group = (body.get("customer") or "").strip()
     if not items:
         raise SuiError("没有可创建的线路")
-    if not protos:
-        raise SuiError("请至少选择一个入站协议")
     with LOCK:
         data = SUI.load_all()
-        tls, taken_names, taken_ports = _prepare(data, protos)
-        results, new_outbounds, shared = [], [], []
+        tls_id, taken_names, taken_ports = _prepare(data)
+        results, new_outbounds = [], []
         for idx, it in enumerate(items):
-            base = unique_name(str(it["name"]).strip(), taken_names)
+            name = unique_name(str(it["name"]).strip(), taken_names)
             ob = {k: v for k, v in dict(it["outbound"]).items() if k != "tag"}
-            ob["tag"] = base
+            ob["tag"] = name
             try:
                 SUI.save("outbounds", "new", ob)
             except Exception as e:
-                results.append({"name": base, "ok": False, "error": "落地出站创建失败：%s" % e, "item": idx})
+                results.append({"name": name, "ok": False, "error": "落地出站创建失败：%s" % e, "item": idx})
                 continue
-            made = []
-            for i, proto in enumerate(protos):
-                name = base if i == 0 else unique_name(base + PROTO_SUFFIX[proto], taken_names)
-                try:
-                    if proto == "vless443":
-                        if not shared:
-                            shared.append(_ensure_shared(data, tls[proto], taken_ports))
-                        made.append(_make_shared_user(name, shared[0], expiry, group, base))
-                        shared[0] = shared[0][:2] + ([],)  # 兜底规则只加一次
-                    else:
-                        made.append(_make_inbound(name, proto, tls[proto], expiry, group, taken_ports, base))
-                except Exception as e:
-                    made.append({"name": name, "protocol": proto, "ok": False, "error": str(e)})
-            if not any(m["ok"] for m in made):
-                _rollback({}, base)  # 一个入站都没建成：落地出站也删掉
-            else:
-                new_outbounds.append(base)
-            for m in made:
-                m["item"] = idx
-            results.extend(made)
+            try:
+                r = _make_inbound(name, tls_id, expiry, group, taken_ports, name)
+                new_outbounds.append(name)
+            except Exception as e:
+                _rollback({}, name)  # 入站没建成：落地出站也删掉
+                r = {"name": name, "protocol": "vless", "ok": False, "error": str(e)}
+            r["item"] = idx
+            results.append(r)
         core = _apply_rules(results, new_outbounds)
     for r in results:
         if r.get("ok") and r.get("client_id"):
@@ -793,7 +719,7 @@ def op_qr(body):
 def op_status(body):
     data = SUI.load_all()
     return {"version": VERSION, "public_host": CFG["public_host"],
-            "reality_tls": find_tls(data, "reality"), "cert_tls": find_tls(data, "cert")}
+            "reality_tls": find_tls(data, "reality")}
 
 
 OPS = {"status": op_status, "preview": op_preview, "check_raw": op_check_raw, "create": op_create, "qr": op_qr}

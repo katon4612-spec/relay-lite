@@ -87,7 +87,7 @@ if systemctl is-active --quiet relay-lite; then
   echo " 备用密码（s-ui 连不上时用，账号留空）： $PASS"
   echo "----------------------------------------------"
   echo " 云服务器安全组需要放行 TCP $PORT（简易版中转助手页面）"
-  echo " 以及节点端口范围（默认 10000-60000，TCP+UDP）"
+  echo " 以及节点端口范围（默认 10000-60000，TCP）"
   echo " 配置文件：$DIR/config.json   日志：journalctl -u relay-lite -f"
   echo "=============================================="
 else

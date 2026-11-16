@@ -124,7 +124,6 @@ def main():
         "sui_host": web_domain or "",
         "sui_restart_cmd": old.get("sui_restart_cmd", "systemctl restart s-ui"),
         "port_min": old.get("port_min", 10000), "port_max": old.get("port_max", 60000),
-        "shared_port": old.get("shared_port", 443),
         "check_url": old.get("check_url", "https://www.gstatic.com/generate_204"),
         "geo_lookup": old.get("geo_lookup", True), "auto_firewall": old.get("auto_firewall", True),
         "reserve_ports": old.get("reserve_ports", True),
