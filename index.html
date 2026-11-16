@@ -142,11 +142,7 @@ function renderMain(){
   <div class="row">
     <label>客户名 <input id="cust" placeholder="如：见山" value="${esc(saved.cust||"")}"></label>
   </div>
-  <div style="margin-top:12px"><textarea id="txt" placeholder="每行一条落地，支持：
-socks5://账号:密码@IP:端口
-IP:端口:账号:密码
-vless://…  hy2://…  ss://…  trojan://…  vmess://…  tuic://…
-也可以在前面加名字：  我的线路A socks5://账号:密码@IP:端口"></textarea></div>
+  <div style="margin-top:12px"><textarea id="txt"></textarea></div>
   <p class="hint">每条落地生成一个 VLESS-Reality 节点，节点名自动生成为「落地国家 + 客户名 + 落地IP」，下一步可以改。</p>
   <div class="row" style="margin-top:10px"><button class="pri" id="pv">解析预览</button></div></div>
   <div id="pvbox"></div><div id="resbox"></div>`;
